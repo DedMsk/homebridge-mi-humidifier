@@ -50,16 +50,27 @@ class MiHumidifier {
       .getCharacteristic(Characteristic.CurrentRelativeHumidity)
       .on('get', this.getCurrentRelativeHumidity.bind(this))
 
+    // Target relative humidity (miio 'limit_hum')
+    this.service
+      .addCharacteristic(Characteristic.TargetRelativeHumidity)
+      .on('get', this.getTargetRelativeHumidity.bind(this))
+      .on('set', this.setTargetRelativeHumidity.bind(this))
+
     // Rotation speed
     this.service
       .getCharacteristic(Characteristic.RotationSpeed)
       .setProps({
-        minValue: 0, // idle
+        minValue: 0, // idle (model:zhimi.humidifier.ca1, 0 = auto)
         maxValue: 3, // high
         minStep: 1,
       })
       .on('get', this.getRotationSpeed.bind(this))
       .on('set', this.setRotationSpeed.bind(this))
+
+    // Current water level (miio 'depth')
+    this.service
+      .getCharacteristic(Characteristic.WaterLevel)
+      .on('get', this.getWaterLevel.bind(this))
 
     // Create service info
     this.serviceInfo = new Service.AccessoryInformation()
@@ -157,10 +168,45 @@ class MiHumidifier {
     }
   }
 
+  async setTargetRelativeHumidity(value, callback) {
+    try {
+      const [ result ] = await this.device.call('set_limit_hum', [value])
+
+      if (result !== 'ok')
+        throw new Error(result)
+
+      callback()
+    } catch (e) {
+      this.log.error('setTargetRelativeHumidity', e)
+      callback(e)
+    }
+  }
+
+  async getTargetRelativeHumidity(callback) {
+    try {
+      const [ limit_hum ] = await this.device.call('get_prop', ['limit_hum'])
+      callback(null, limit_hum)
+    } catch (e) {
+      this.log.error('getTargetRelativeHumidity', e)
+      callback(e)
+    }
+  }
+
+  async getWaterLevel(callback) {
+    try {
+      const [ depth ] = await this.device.call('get_prop', ['depth'])
+      callback(null, depth)
+    } catch (e) {
+      this.log.error('getWaterLevel', e)
+      callback(e)
+    }
+  }
+
   async getRotationSpeed(callback) {
     try {
       const modeToSpeed = {
-        'idle':   0,
+        //'idle':   0,//for older zhimi.humidifier.v1)
+        'auto':   0,//for zhimi.humidifier.ca1
         'silent': 1,
         'medium': 2,
         'high':   3,
@@ -188,7 +234,8 @@ class MiHumidifier {
       if (value > 0) {
         [ result ] = await this.device.call('set_mode', [speedToMode[value]])
       } else {
-        [ result ] = await this.device.call('set_power', ['off'])
+      //  [ result ] = await this.device.call('set_power', ['off'])
+        [ result ] = await this.device.call('set_mode', ['auto'])
       }
 
       if (result !== 'ok')
